@@ -1,7 +1,7 @@
 # 基于 LangExtract 与本地 LLM 的钢轨伤损运维知识图谱构建项目
 
 **项目时间**：2025.09 - 2025.11  
-**技术栈**：Python 3.12 · LangChain · OpenAI API · Neo4j · RapidFuzz
+**技术栈**：Python 3.12 · LangChain · OpenAI API · Neo4j · RapidFuzz · Pydantic
 
 ## 项目概述
 
@@ -31,7 +31,12 @@ langextract_raij_maintance/
 │   └── graph_builder.py        # 知识图谱构建逻辑
 ├── qa/
 │   └── knowledge_qa.py         # 问答辅助接口（Cypher+LLM）
-├── main.py                     # 端到端主流程
+├── utils/
+│   ├── tracer.py               # LLM调用追踪（LangChain Callback）
+│   └── checkpoint.py           # 流水线断点续跑
+├── traces/                     # LLM调用日志（JSONL，自动生成）
+├── checkpoints/                # 各步骤中间结果（自动生成）
+├── main.py                     # 端到端主流程（支持 --resume）
 ├── demo_query.py               # 演示查询脚本
 ├── config.py                   # 配置管理
 └── requirements.txt
@@ -92,7 +97,17 @@ NEO4J_PASSWORD=password
 ### 4. 运行主流程
 
 ```bash
+# 全新运行（自动生成 run_id）
 python main.py
+
+# 从上次断点继续（跳过已完成步骤，节省LLM费用）
+python main.py --resume
+
+# 指定 run_id 继续
+python main.py --resume 20240528_143022_abc123
+
+# 查看所有历史 run 及 checkpoint 状态
+python main.py --list-runs
 ```
 
 执行步骤：
@@ -101,6 +116,7 @@ python main.py
 3. 实体对齐与去重（同义词词典 + 字符串相似度）
 4. 构建Neo4j知识图谱
 5. 问答辅助演示
+6. 打印 LLM 调用追踪汇总（调用次数/耗时/tokens/费用）
 
 ### 5. 演示查询
 
@@ -140,6 +156,35 @@ MATCH (d:DamageType)-[:HAS_WEAR_LIMIT]->(w:WearLimit)-[:TRIGGERS]->(m:Maintenanc
 WHERE d.name CONTAINS '垂直磨耗' AND w.line_type CONTAINS '高速'
 RETURN d.name, w.limit_value, w.unit, m.name
 ```
+
+### LLM 调用追踪（Trace）
+
+基于 LangChain `BaseCallbackHandler` 实现，无侵入式挂载：
+
+```python
+tracer = LLMCallTracer(run_id=run_id, traces_dir=TRACES_DIR)
+extractor = LLMExtractor(callbacks=[tracer])   # 传入即生效
+```
+
+每次 LLM 调用自动记录并追加写入 `traces/<run_id>.jsonl`：
+
+```json
+{"step": "step2_extract", "model": "gpt-3.5-turbo", "latency_ms": 2341,
+ "prompt_tokens": 1204, "completion_tokens": 487, "cost_usd": 0.001333, "status": "success"}
+```
+
+流程结束输出汇总表（调用次数 / 总耗时 / tokens / 预估费用）。
+
+### Checkpoint 断点续跑
+
+各步骤完成后序列化中间结果至 `checkpoints/<run_id>/`，`ExtractionResult` 通过 Pydantic `model_dump()` / `model_validate()` 往返序列化：
+
+```python
+ckpt.save("step2_extracted", merged_result)    # 保存
+result = ckpt.load("step2_extracted", as_extraction_result=True)  # 恢复
+```
+
+网络抖动或 LLM 限流导致中断后，`--resume` 可跳过已完成步骤直接继续。
 
 ## 典型问答示例
 
