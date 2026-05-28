@@ -1,8 +1,8 @@
 import json
 import re
-from typing import Optional
+from typing import List, Optional
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import HumanMessage, SystemMessage
 
 from config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
@@ -93,13 +93,14 @@ EXTRACTION_PROMPT = """请从以下钢轨运维文本中抽取结构化知识：
 
 
 class LLMExtractor:
-    def __init__(self):
+    def __init__(self, callbacks: Optional[List[BaseCallbackHandler]] = None):
         self.llm = ChatOpenAI(
             api_key=OPENAI_API_KEY,
             base_url=OPENAI_BASE_URL,
             model=OPENAI_MODEL,
             temperature=0,
-            max_tokens=4000
+            max_tokens=4000,
+            callbacks=callbacks or [],
         )
 
     def extract_from_chunk(self, text: str) -> Optional[ExtractionResult]:

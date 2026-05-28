@@ -4,6 +4,7 @@ from langchain.schema import HumanMessage, SystemMessage
 
 from config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 from graph.neo4j_client import Neo4jClient
+from langchain.callbacks.base import BaseCallbackHandler
 
 
 QA_SYSTEM_PROMPT = """你是钢轨运维知识图谱的智能问答助手。
@@ -12,14 +13,15 @@ QA_SYSTEM_PROMPT = """你是钢轨运维知识图谱的智能问答助手。
 
 
 class KnowledgeQA:
-    def __init__(self, client: Neo4jClient):
+    def __init__(self, client: Neo4jClient, callbacks: Optional[List[BaseCallbackHandler]] = None):
         self.client = client
         self.llm = ChatOpenAI(
             api_key=OPENAI_API_KEY,
             base_url=OPENAI_BASE_URL,
             model=OPENAI_MODEL,
             temperature=0.1,
-            max_tokens=1000
+            max_tokens=1000,
+            callbacks=callbacks or [],
         )
 
     # ==================== 查询方法 ====================
